@@ -6,13 +6,24 @@ This can be seen as a generalization of linear interpolation.
 """
 from __future__ import division, print_function, absolute_import
 
+import networkx as nx
 
-def get_first(it):
+
+def _get_first(it):
     for x in it:
         return x
 
 
-def nx_arborescence_interpolate(A, root, v, weight=None):
+def _weighted_mean(wv_pairs):
+    wsum = 0
+    wvsum = 0
+    for w, v in wv_pairs:
+        wsum += w
+        wvsum += w*v
+    return wvsum / wsum
+
+
+def arborescence_interpolation(A, root, v_in, weight='weight'):
     """
     Interpolation on an arborescence.
 
@@ -24,7 +35,7 @@ def nx_arborescence_interpolate(A, root, v, weight=None):
         An arborescence.
     root : hashable
         The root of the arborescence.
-    v : dict
+    v_in : dict
         Sparse map from vertex to value.
         Keys not in G will be ignored.
     weight : string or None, optional
@@ -37,17 +48,61 @@ def nx_arborescence_interpolate(A, root, v, weight=None):
         All nodes in G should be represented as keys in this dict.
 
     """
+    #TODO more input validation
+    edges = list(nx.bfs_edges(A, root))
+
     # Do the pass from the leaves to the root.
-    # For each edge, get the effective weight and value.
-    edge_eff_weight = {}
-    edge_eff_value = {}
-    for 
+    # For each non-root node, get the effective weight and value
+    # of the subtree (including the edge leading to that node).
+    eff_wv_pairs = {}
+    for na, nb in reversed(edges):
+        in_weight = A[na][nb][weight]
+        if nb in v_in:
+            eff_wv_pairs[nb] = (in_weight, v_in[nb])
+        else:
+            ncs = list(A[nb])
+            eff_weight = None
+            eff_value_total = None
+            for nc in ncs:
+                wv_pair = eff_wv_pairs[nc]
+                if wv_pair is None:
+                    continue
+                w, v = wv_pair
+                if eff_weight is None:
+                    eff_weight = w
+                    eff_value_total = w * v
+                else:
+                    eff_weight += w
+                    eff_value_total += w * v
+            if eff_weight is None:
+                eff_wv_pairs[nb] = None
+            else:
+                eff_value = eff_value_total / eff_weight
+                eff_wv_pairs[nb] = (eff_weight, eff_value)
 
-    # do the pass from the root to the leaves
-    pass
+    # Do the pass from the root to the leaves.
+    v_interp = {}
+    for na, nb in [(None, root)] + edges:
+        if nb in v_in:
+            v_interp[nb] = v_in[nb]
+        else:
+            wv_pairs = []
+            if na is not None:
+                w = A[na][nb][weight]
+                v = v_interp[na]
+                wv_pairs.append((w, v))
+            for nc in A[nb]:
+                wv_pair = eff_wv_pairs[nc]
+                if wv_pair is not None:
+                    wv_pairs.append(wv_pair)
+            if not wv_pairs:
+                raise Exception('failed to find an interpolation')
+            v_interp[nb] = _weighted_mean(wv_pairs)
+
+    return v_interp
 
 
-def nx_tree_interpolate(G, v, weight=None):
+def tree_interpolation(G, v, weight='weight'):
     """
     Interpolation on a tree domain.
 
@@ -96,12 +151,12 @@ def nx_tree_interpolate(G, v, weight=None):
         return vlocal
 
     # construct the arborescence rooted at an observed node
-    root = get_first(observed_nodes)
+    root = _get_first(observed_nodes)
     A = nx.bfs_tree(G, root)
-    return nx_arborescence_interpolate(A, root, vlocal, weight=weight)
+    return arborescence_interpolation(A, root, vlocal, weight=weight)
 
 
-def nx_forest_interpolate(G, v, weight=None):
+def forest_interpolation(G, v, weight='weight'):
     """
     Interpolation on a forest domain.
 
@@ -126,6 +181,6 @@ def nx_forest_interpolate(G, v, weight=None):
     """
     vlocal = {}
     for G_sub in nx.connected_component_subgraphs(G):
-        vlocal.update(nx_tree_interpolate(G, v, weight=weight))
+        vlocal.update(tree_interpolation(G, v, weight=weight))
     return vlocal
 
