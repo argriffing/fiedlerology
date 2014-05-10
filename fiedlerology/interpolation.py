@@ -23,6 +23,23 @@ def _weighted_mean(wv_pairs):
     return wvsum / wsum
 
 
+def linalg_laplacian_schur_complement(G,
+        observed_nodelist, unobserved_nodelist, weight='weight'):
+    nodelist = observed_nodelist + unobserved_nodelist
+
+def linalg_laplcian_interpolation(G,
+        observed_nodelist, unobserved_nodelist,
+        observed_values, weight='weight'):
+    nodelist_keep = list(nodes)
+    nodelist_remove = list(set(G) - set(nodes))
+    nodelist = nodelist_keep + nodelist_remove
+    L = nx.linalg.laplacian_matrix(G, nodelist).A
+    k = len(nodelist_keep)
+    v_kept = np.array(list(values), dtype=float)
+    v_removed = -solve(L[k:, k:], L[k:, :k].dot(v_kept))
+    return np.concatenate((v_kept, v_removed))
+
+
 def arborescence_interpolation(A, root, v_in, weight='weight'):
     """
     Interpolation on an arborescence.
